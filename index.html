@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Social Media App</title>
+    <style>
+        /* Basic styles */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 0;
+            color: #1c1e21;
+        }
+
+        header {
+            background-color: #4267B2;
+            color: white;
+            padding: 10px;
+            text-align: center;
+        }
+
+        main {
+            margin: 20px auto;
+            max-width: 600px;
+        }
+
+        .post, .comment {
+            background-color: white;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        .post img {
+            max-width: 100%;
+            border-radius: 5px;
+        }
+
+        .reaction-buttons, .comment-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .reaction-buttons button, .comment-actions button {
+            background-color: #f0f2f5;
+            border: 1px solid #ddd;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .reaction-buttons button:hover, .comment-actions button:hover {
+            background-color: #e4e6eb;
+        }
+
+        textarea {
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+
+        #createPost {
+            margin-bottom: 30px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Social Media App</h1>
+    </header>
+
+    <main>
+        <!-- Create Post Section -->
+        <section id="createPost">
+            <h2>Create a New Post</h2>
+            <form id="postForm" onsubmit="submitPost(event)">
+                <textarea id="postText" placeholder="What's on your mind?" required></textarea>
+                <input type="file" id="postImage" accept="image/*">
+                <button type="submit">Post</button>
+            </form>
+        </section>
+
+        <!-- Posts Section -->
+        <section id="postsContainer">
+            <h2>Posts</h2>
+            <div id="posts"></div>
+        </section>
+    </main>
+
+    <script>
+        const serverUrl = 'http://127.0.0.1:5000';  // Change to your local server's IP if necessary
+
+        let posts = [];
+
+        async function loadPosts() {
+            const response = await fetch(`${serverUrl}/load-posts`);
+            if (response.ok) {
+                posts = await response.json();
+                renderPosts();
+            }
+        }
+
+        async function savePosts() {
+            await fetch(`${serverUrl}/save-posts`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ posts })
+            });
+        }
+
+        function renderPosts() {
+            const postsContainer = document.getElementById('posts');
+            postsContainer.innerHTML = '';
+            posts.forEach(post => {
+                postsContainer.appendChild(createPostElement(post));
+            });
+        }
+
+        function createPostElement(post) {
+            const postElement = document.createElement('div');
+            postElement.className = 'post';
+
+            const postText = document.createElement('p');
+            postText.textContent = post.text;
+            postElement.appendChild(postText);
+
+            if (post.image) {
+                const postImage = document.createElement('img');
+                postImage.src = `${serverUrl}/uploads/${post.image}`;
+                postElement.appendChild(postImage);
+            }
+
+            const reactionButtons = createReactionButtons(post);
+            postElement.appendChild(reactionButtons);
+
+            const commentForm = createCommentForm(post.id);
+            postElement.appendChild(commentForm);
+
+            const commentsContainer = document.createElement('div');
+            commentsContainer.className = 'comments-container';
+            post.comments.forEach(comment => {
+                commentsContainer.appendChild(createCommentElement(post.id, comment));
+            });
+            postElement.appendChild(commentsContainer);
+
+            return postElement;
+        }
+
+        function createReactionButtons(post) {
+            const container = document.createElement('div');
+            container.className = 'reaction-buttons';
+
+            const reactions = ['Like', 'Love', 'Haha', 'Wow', 'Sad', 'Angry'];
+            reactions.forEach(reaction => {
+                const button = document.createElement('button');
+                button.textContent = `${reaction} (${post.reactions[reaction.toLowerCase()] || 0})`;
+                button.onclick = () => addReaction(post.id, reaction.toLowerCase());
+                container.appendChild(button);
+            });
+
+            return container;
+        }
+
+        function createCommentElement(postId, comment) {
+            const commentElement = document.createElement('div');
+            commentElement.className = 'comment';
+
+            const commentText = document.createElement('p');
+            commentText.textContent = comment.text;
+            commentElement.appendChild(commentText);
+
+            const reactionButtons = createReactionButtons(comment);
+            commentElement.appendChild(reactionButtons);
+
+            const commentActions = document.createElement('div');
+            commentActions.className = 'comment-actions';
+
+            const editButton = document.createElement('button');
+            editButton.textContent = 'Edit';
+            editButton.onclick = () => editComment(postId, comment.id);
+            commentActions.appendChild(editButton);
+
+            const deleteButton = document.createElement('button');
+            deleteButton.textContent = 'Delete';
+            deleteButton.onclick = () => deleteComment(postId, comment.id);
+            commentActions.appendChild(deleteButton);
+
+            const replyButton = document.createElement('button');
+            replyButton.textContent = 'Reply';
+            replyButton.onclick = () => addReply(postId, comment.id);
+            commentActions.appendChild(replyButton);
+
+            commentElement.appendChild(commentActions);
+
+            const repliesContainer = document.createElement('div');
+            repliesContainer.className = 'replies-container';
+            (comment.replies || []).forEach(reply => {
+                repliesContainer.appendChild(createCommentElement(postId, reply));
+            });
+            commentElement.appendChild(repliesContainer);
+
+            return commentElement;
+        }
+
+        function createCommentForm(postId) {
+            const form = document.createElement('form');
+            form.onsubmit = (event) => {
+                event.preventDefault();
+                addComment(postId, event.target.elements['commentText'].value);
+                event.target.reset();
+            };
+
+            const textarea = document.createElement('textarea');
+            textarea.name = 'commentText';
+            textarea.placeholder = 'Write a comment...';
+            form.appendChild(textarea);
+
+            const submitButton = document.createElement('button');
+            submitButton.type = 'submit';
+            submitButton.textContent = 'Comment';
+            form.appendChild(submitButton);
+
+            return form;
+        }
+
+        async function submitPost(event) {
+            event.preventDefault();
+
+            const postText = document.getElementById('postText').value;
+            const postImage = document.getElementById('postImage').files[0];
+            let imageFilename = '';
+
+            if (postImage) {
+                const formData = new FormData();
+                formData.append('file', postImage);
+
+                const response = await fetch(`${serverUrl}/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    imageFilename = data.filename;
+                }
+            }
+
+            const newPost = {
+                id: posts.length ? posts[posts.length - 1].id + 1 : 1,
+                text: postText,
+                image: imageFilename,
+                reactions: { like: 0, love: 0, haha: 0, wow: 0, sad: 0, angry: 0 },
+                comments: []
+            };
+
+            posts.push(newPost);
+            await savePosts();
+            renderPosts();
+        }
+
+        function addReaction(postId, reaction) {
+            const post = posts.find(p => p.id === postId);
+            if (post) {
+                post.reactions[reaction] = (post.reactions[reaction] || 0) + 1;
+                savePosts().then(renderPosts);
+            }
+        }
+
+        function addComment(postId, text) {
+            const post = posts.find(p => p.id === postId);
+            if (post) {
+                const newComment = {
+                    id: post.comments.length ? post.comments[post.comments.length - 1].id + 1 : 1,
+                    text: text,
+                    reactions: { like: 0, love: 0, haha: 0, wow: 0, sad: 0, angry: 0 },
+                    replies: []
+                };
+                post.comments.push(newComment);
+                savePosts().then(renderPosts);
+            }
+        }
+
+        function editComment(postId, commentId) {
+            const post = posts.find(p => p.id === postId);
+            const comment = post.comments.find(c => c.id === commentId);
+            if (comment) {
+                const newText = prompt('Edit your comment:', comment.text);
+                if (newText !== null) {
+                    comment.text = newText;
+                    savePosts().then(renderPosts);
+                }
+            }
+        }
+
+        function deleteComment(postId, commentId) {
+            const post = posts.find(p => p.id === postId);
+            if (post) {
+                post.comments = post.comments.filter(c => c.id !== commentId);
+                savePosts().then(renderPosts);
+            }
+        }
+
+        function addReply(postId, commentId) {
+            const post = posts.find(p => p.id === postId);
+            const comment = post.comments.find(c => c.id === commentId);
+            if (comment) {
+                const replyText = prompt('Write your reply:');
+                if (replyText) {
+                    const newReply = {
+                        id: comment.replies.length ? comment.replies[comment.replies.length - 1].id + 1 : 1,
+                        text: replyText,
+                        reactions: { like: 0, love: 0, haha: 0, wow: 0, sad: 0, angry: 0 }
+                    };
+                    comment.replies.push(newReply);
+                    savePosts().then(renderPosts);
+                }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', loadPosts);
+    </script>
+</body>
+</html>
